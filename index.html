@@ -1,0 +1,172 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vital Signs Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f1f5f9;
+  color: #183047;
+}
+header {
+  background: #0f766e;
+  color: white;
+  padding: 24px;
+}
+main { max-width: 1050px; margin: 24px auto; padding: 16px; }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+.card, .chart {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px #0001;
+}
+.value { font-size: 32px; font-weight: bold; margin: 12px 0; }
+.heart { color: #dc2626; }
+.temp { color: #ea580c; }
+.spo2 { color: #0284c7; }
+.chart { margin-top: 20px; height: 330px; }
+button {
+  padding: 12px 18px;
+  background: #0f766e;
+  color: white;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.note { color: #64748b; font-size: 14px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Vital Signs Dashboard</h1>
+  <p>Sample patient observations and trend visualization</p>
+</header>
+<main>
+  <section class="cards">
+    <div class="card">
+      <h3>Heart Rate</h3>
+      <div class="value heart" id="hr">76 bpm</div>
+      <p>Sample beats per minute</p>
+    </div>
+    <div class="card">
+      <h3>Temperature</h3>
+      <div class="value temp" id="temp">36.8 °C</div>
+      <p>Sample body temperature</p>
+    </div>
+    <div class="card">
+      <h3>SpO₂</h3>
+      <div class="value spo2" id="spo2">98%</div>
+      <p>Sample oxygen saturation</p>
+    </div>
+  </section>
+
+  <section class="chart">
+    <h2>Heart Rate Trend</h2>
+    <canvas id="heartChart"></canvas>
+  </section>
+  <section class="chart">
+    <h2>Temperature Trend</h2>
+    <canvas id="tempChart"></canvas>
+  </section>
+  <section class="chart">
+    <h2>SpO₂ Trend</h2>
+    <canvas id="spo2Chart"></canvas>
+  </section>
+
+  <section class="card" style="margin-top:20px">
+    <h3>Demo Controls</h3>
+    <p class="note">Generate another set of simulated readings to see the dashboard update.</p>
+    <button id="refresh">Generate Sample Readings</button>
+    <p class="note" id="updated">Showing illustrative sample data.</p>
+  </section>
+
+  <p class="note">
+    Educational prototype only. These are simulated values, not live patient
+    measurements, a diagnosis, or a medical alarm system.
+  </p>
+</main>
+
+<script>
+const labels = ["1", "2", "3", "4", "5", "6"];
+const initial = {
+  hr: [72, 75, 73, 78, 76, 76],
+  temp: [36.6, 36.7, 36.7, 36.8, 36.9, 36.8],
+  spo2: [97, 98, 98, 97, 99, 98]
+};
+
+function makeChart(id, label, data, color, min, max) {
+  return new Chart(document.getElementById(id), {
+    type: "line",
+    data: {
+      labels: [...labels],
+      datasets: [{
+        label,
+        data: [...data],
+        borderColor: color,
+        backgroundColor: color,
+        tension: 0.3,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min, max }
+      }
+    }
+  });
+}
+
+const heartChart = makeChart(
+  "heartChart", "Heart Rate (bpm)", initial.hr, "#dc2626", 50, 120
+);
+const tempChart = makeChart(
+  "tempChart", "Temperature (°C)", initial.temp, "#ea580c", 35, 40
+);
+const spo2Chart = makeChart(
+  "spo2Chart", "SpO₂ (%)", initial.spo2, "#0284c7", 85, 100
+);
+
+function generate() {
+  const hr = Math.round(70 + Math.random() * 20);
+  const temp = +(36.5 + Math.random() * 1.0).toFixed(1);
+  const spo2 = Math.round(95 + Math.random() * 5);
+
+  document.getElementById("hr").textContent = hr + " bpm";
+  document.getElementById("temp").textContent = temp + " °C";
+  document.getElementById("spo2").textContent = spo2 + "%";
+
+  const time = new Date().toLocaleTimeString();
+  [heartChart, tempChart, spo2Chart].forEach(chart => {
+    chart.data.labels.push(time);
+    chart.data.labels.shift();
+  });
+
+  heartChart.data.datasets[0].data.push(hr);
+  heartChart.data.datasets[0].data.shift();
+  tempChart.data.datasets[0].data.push(temp);
+  tempChart.data.datasets[0].data.shift();
+  spo2Chart.data.datasets[0].data.push(spo2);
+  spo2Chart.data.datasets[0].data.shift();
+
+  [heartChart, tempChart, spo2Chart].forEach(chart => chart.update());
+  document.getElementById("updated").textContent =
+    "New simulated readings generated at " + time;
+}
+
+document.getElementById("refresh").addEventListener("click", generate);
+</script>
+</body>
+</html>

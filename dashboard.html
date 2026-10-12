@@ -1,0 +1,255 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vital Signs Dashboard V2</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f1f5f9;color:#183047}
+header{background:#0f766e;color:white;padding:22px}
+main{max-width:1100px;margin:24px auto;padding:0 16px}
+.panel,.card{background:white;padding:18px;border-radius:12px;margin-bottom:16px;box-shadow:0 2px 8px #0001}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+label{display:block;font-size:13px}
+input,select,button{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:5px}
+button{background:#0f766e;color:white;border:0;cursor:pointer}
+button.secondary{background:#475569}
+.value{font-size:32px;font-weight:bold;margin:14px 0}
+.hr{color:#dc2626}.temp{color:#c2410c}.spo2{color:#0284c7}
+.chart{height:300px}
+.muted{font-size:13px;color:#64748b;line-height:1.5}
+.alert{padding:12px;margin:8px 0;border-radius:8px;background:#dcfce7;color:#166534}
+.alert.warning{background:#fef3c7;color:#92400e}
+.table-wrap{overflow-x:auto}
+table{width:100%;min-width:600px;border-collapse:collapse}
+th,td{padding:10px;text-align:left;border-bottom:1px solid #e2e8f0}
+th{background:#ccfbf1}
+</style>
+</head>
+<body>
+<header>
+<h1>Vital Signs Dashboard</h1>
+<p>Simulated patient profiles, observations and trend monitoring</p>
+</header>
+<main>
+<section class="panel">
+<h2>Patient Profile</h2>
+<div class="grid">
+<label>Choose demo patient
+<select id="patient">
+<option value="P001">P001 — Demo Patient A</option>
+<option value="P002">P002 — Demo Patient B</option>
+<option value="P003">P003 — Demo Patient C</option>
+</select>
+</label>
+<label>Age group
+<select id="ageGroup">
+<option>Adult</option><option>Child</option><option>Older adult</option>
+</select>
+</label>
+<label>Automatic update interval
+<select id="interval">
+<option value="3000">3 seconds</option>
+<option value="5000" selected>5 seconds</option>
+<option value="10000">10 seconds</option>
+</select>
+</label>
+</div>
+<p class="muted">All profiles and readings are fictional demonstration data.</p>
+</section>
+
+<section class="grid">
+<div class="card"><h3>Heart Rate</h3><div id="hr" class="value hr">76 bpm</div><span id="hrState">Demo reading</span></div>
+<div class="card"><h3>Temperature</h3><div id="temp" class="value temp">36.8 °C</div><span id="tempState">Demo reading</span></div>
+<div class="card"><h3>SpO₂</h3><div id="spo2" class="value spo2">98%</div><span id="spo2State">Demo reading</span></div>
+</section>
+
+<section class="panel">
+<h2>Threshold Alerts</h2>
+<div id="alerts" aria-live="polite"></div>
+<p class="muted">Educational example thresholds for adults: HR below 60 or above 100 bpm, temperature below 36 or above 38 °C, and SpO₂ below 95%. These simplified values are not validated clinical alarm settings.</p>
+</section>
+
+<section class="grid">
+<div class="panel chart"><h2>Heart Rate</h2><canvas id="hrChart"></canvas></div>
+<div class="panel chart"><h2>Temperature</h2><canvas id="tempChart"></canvas></div>
+<div class="panel chart"><h2>SpO₂</h2><canvas id="spo2Chart"></canvas></div>
+</section>
+
+<section class="panel">
+<h2>Monitoring Controls</h2>
+<div class="grid">
+<button id="start">Start Auto Updates</button>
+<button id="pause" class="secondary">Pause Updates</button>
+<button id="one">Generate One Reading</button>
+<button id="export">Export CSV</button>
+</div>
+<p id="connection" class="muted">Paused — no medical device connected.</p>
+</section>
+
+<section class="panel">
+<h2>Observation History</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Time</th><th>Patient</th><th>Heart Rate</th><th>Temperature</th><th>SpO₂</th><th>Alert</th></tr></thead>
+<tbody id="history"></tbody>
+</table>
+</div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const KEY="vitalsV2Observations";
+const profiles={
+ P001:{hr:76,temp:36.8,spo2:98},
+ P002:{hr:82,temp:37.0,spo2:97},
+ P003:{hr:72,temp:36.6,spo2:99}
+};
+let saved={};
+try{saved=JSON.parse(localStorage.getItem(KEY)||"{}");}catch{saved={};}
+if(!saved||typeof saved!=="object"||Array.isArray(saved))saved={};
+let observations=[];
+let current={...profiles.P001};
+let timer=null;
+let charts={};
+
+function esc(s){
+ return String(s??"").replace(/[&<>"']/g,c=>({
+ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ }[c]));
+}
+function patient(){return $("patient").value;}
+function alertsFor(v){
+ const a=[];
+ if(v.hr<60||v.hr>100)a.push("Heart rate outside demo range");
+ if(v.temp<36||v.temp>38)a.push("Temperature outside demo range");
+ if(v.spo2<95)a.push("SpO₂ below demo threshold");
+ return a;
+}
+function save(){
+ try{
+  saved[patient()]=observations.slice(-100);
+  localStorage.setItem(KEY,JSON.stringify(saved));
+ }catch{
+  $("connection").textContent="Browser storage unavailable; data may not persist.";
+ }
+}
+function renderValues(){
+ $("hr").textContent=current.hr+" bpm";
+ $("temp").textContent=current.temp.toFixed(1)+" °C";
+ $("spo2").textContent=current.spo2+"%";
+ const checks=[
+ ["hrState",current.hr<60||current.hr>100],
+ ["tempState",current.temp<36||current.temp>38],
+ ["spo2State",current.spo2<95]
+ ];
+ checks.forEach(([id,bad])=>{
+  $(id).textContent=bad?"Threshold crossed":"Within demo range";
+  $(id).style.color=bad?"#dc2626":"#15803d";
+ });
+ const a=alertsFor(current);
+ $("alerts").innerHTML=a.length?
+  a.map(x=>`<div class="alert warning">${esc(x)} — review this simulated reading.</div>`).join(""):
+  '<div class="alert">No configured demo thresholds crossed in the latest reading.</div>';
+}
+function renderHistory(){
+ $("history").innerHTML=observations.slice().reverse().map(o=>
+ `<tr><td>${esc(o.time)}</td><td>${esc(o.patient)}</td>
+ <td>${o.hr} bpm</td><td>${o.temp.toFixed(1)} °C</td>
+ <td>${o.spo2}%</td><td>${esc(o.alert)}</td></tr>`
+ ).join("")||'<tr><td colspan="6">No observations yet. Generate a reading to begin.</td></tr>';
+}
+function renderCharts(){
+ if(!window.Chart){
+  $("connection").textContent="Chart.js unavailable. Check your internet connection.";
+  return;
+ }
+ const recent=observations.slice(-20);
+ const labels=recent.map(o=>o.time);
+ const configs=[
+ ["hrChart","Heart Rate (bpm)",recent.map(o=>o.hr),"#dc2626",40,130],
+ ["tempChart","Temperature (°C)",recent.map(o=>o.temp),"#c2410c",34,41],
+ ["spo2Chart","SpO₂ (%)",recent.map(o=>o.spo2),"#0284c7",80,100]
+ ];
+ configs.forEach(([id,label,values,color,min,max])=>{
+  if(charts[id]){
+   charts[id].data.labels=labels;
+   charts[id].data.datasets[0].data=values;
+   charts[id].update();
+  }else{
+   charts[id]=new Chart($(id),{
+    type:"line",
+    data:{labels,datasets:[{
+     label,data:values,borderColor:color,
+     backgroundColor:color,tension:.25,pointRadius:2
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+     scales:{y:{min,max}}}
+   });
+  }
+ });
+}
+function render(){
+ renderValues();renderHistory();renderCharts();
+}
+function generate(){
+ current={
+  hr:Math.round(70+Math.random()*30),
+  temp:+(36.4+Math.random()*1.8).toFixed(1),
+  spo2:Math.round(93+Math.random()*7)
+ };
+ const a=alertsFor(current);
+ observations.push({
+  time:new Date().toLocaleString(),
+  patient:patient(),
+  hr:current.hr,temp:current.temp,spo2:current.spo2,
+  alert:a.join("; ")||"No demo threshold crossed"
+ });
+ observations=observations.slice(-100);
+ save();render();
+ $("connection").textContent="Simulated data only — no medical device connected.";
+}
+function start(){
+ if(timer)clearInterval(timer);
+ timer=setInterval(generate,Number($("interval").value));
+ $("connection").textContent="Automatic simulation running.";
+}
+function pause(){
+ if(timer)clearInterval(timer);
+ timer=null;
+ $("connection").textContent="Simulation paused — no medical device connected.";
+}
+function loadPatient(){
+ const x=saved[patient()];
+ observations=Array.isArray(x)?x.slice(-100):[];
+ const last=observations[observations.length-1];
+ current=last?{hr:last.hr,temp:last.temp,spo2:last.spo2}:{...profiles[patient()]};
+ render();
+}
+function downloadCSV(){
+ const rows=[
+ ["Timestamp","Patient ID","Heart Rate bpm","Temperature C","SpO2 percent","Alert"],
+ ...observations.map(o=>[o.time,o.patient,o.hr,o.temp,o.spo2,o.alert])
+ ];
+ const content=rows.map(row=>row.map(v=>
+ '"'+String(v??"").replace(/"/g,'""')+'"'
+ ).join(",")).join("\r\n");
+ const url=URL.createObjectURL(new Blob(["\uFEFF"+content],{type:"text/csv;charset=utf-8"}));
+ const a=document.createElement("a");a.href=url;
+ a.download="vital-signs-history.csv";a.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$("start").addEventListener("click",start);
+$("pause").addEventListener("click",pause);
+$("one").addEventListener("click",generate);
+$("export").addEventListener("click",downloadCSV);
+$("interval").addEventListener("change",()=>{if(timer)start();});
+$("patient").addEventListener("change",loadPatient);
+loadPatient();
+</script>
+</body>
+</html>
